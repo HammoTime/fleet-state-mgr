@@ -1,0 +1,12 @@
+node_modules/
+dist/
+coverage/
+.ai-fleet-state/
+*.log
+.DS_Store
+.vscode/
+.idea/
+.claude
+
+# Internal design doc — not published with the package.
+DESIGN.md

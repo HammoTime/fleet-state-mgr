@@ -1,0 +1,56 @@
+{
+  "name": "fleet-state-mgr",
+  "version": "0.1.0",
+  "description": "MCP server for sharing context and state between an Orchestrator and its Sub-Agents in agentic systems.",
+  "type": "module",
+  "bin": {
+    "fleet-state-mgr": "./dist/index.js"
+  },
+  "main": "./dist/server.js",
+  "types": "./dist/server.d.ts",
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "clean": "rm -rf dist coverage",
+    "dev": "tsc --watch",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "prepublishOnly": "npm run clean && npm run build && npm test",
+    "start": "node dist/index.js"
+  },
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "agent",
+    "orchestration",
+    "sub-agent",
+    "ai",
+    "state-management",
+    "fleet"
+  ],
+  "author": "HammoTime",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/HammoTime/fleet-state-mgr.git"
+  },
+  "bugs": {
+    "url": "https://github.com/HammoTime/fleet-state-mgr/issues"
+  },
+  "homepage": "https://github.com/HammoTime/fleet-state-mgr#readme",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.4"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.8"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
