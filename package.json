@@ -45,7 +45,8 @@
   },
   "homepage": "https://github.com/HammoTime/fleet-state-mgr#readme",
   "publishConfig": {
-    "access": "public"
+    "access": "public",
+    "provenance": true
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.0.4"
