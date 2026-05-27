@@ -30,10 +30,13 @@ jobs:
       - name: Update npm to support trusted publishing
         run: npm install -g npm@latest
 
+      - name: Verify npm version
+        run: npm --version
+
       - run: npm ci
       - run: npm run lint
       - run: npm run build
       - run: npm test
 
       - name: Publish to npm
-        run: npm publish --access public
+        run: npm publish --provenance --access public
