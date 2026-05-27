@@ -1,6 +1,6 @@
 {
   "name": "@hammotime/fleet-state-mgr",
-  "version": "0.1.2-alpha",
+  "version": "0.1.2",
   "description": "MCP server for sharing context and state between an Orchestrator and its Sub-Agents in agentic systems.",
   "type": "module",
   "bin": {
