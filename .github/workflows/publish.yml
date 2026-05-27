@@ -32,4 +32,13 @@ jobs:
       - run: npm run lint
       - run: npm run build
       - run: npm test
-      - run: npm publish
+      - name: Publish to npm
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          if [[ "$VERSION" =~ - ]]; then
+            DIST_TAG="${VERSION#*-}"
+            DIST_TAG="${DIST_TAG%%.*}"
+            npm publish --tag "$DIST_TAG"
+          else
+            npm publish
+          fi
