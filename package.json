@@ -4,7 +4,7 @@
   "description": "MCP server for sharing context and state between an Orchestrator and its Sub-Agents in agentic systems.",
   "type": "module",
   "bin": {
-    "fleet-state-mgr": "./dist/index.js"
+    "fleet-state-mgr": "dist/index.js"
   },
   "main": "./dist/server.js",
   "types": "./dist/server.d.ts",
