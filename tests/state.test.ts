@@ -4,6 +4,7 @@ import path from 'node:path';
 import os from 'node:os';
 import {
   DECISION_LOG_FILENAME,
+  PER_RUN_TARGETS,
   StateManager,
   TARGETS,
   type DecisionRecord,
@@ -126,12 +127,17 @@ describe('initRun', () => {
     await state.initState();
   });
 
-  it('creates the per-agent/per-run directory in every bucket', async () => {
+  it('creates a per-agent/per-run directory in every file bucket', async () => {
     const runId = await state.initRun('scout', 'run-abc');
     expect(runId).toBe('run-abc');
-    for (const t of TARGETS) {
+    for (const t of PER_RUN_TARGETS) {
       expect(await isDir(path.join(stateDir, t, 'scout', 'run-abc'))).toBe(true);
     }
+  });
+
+  it('does NOT carve out a per-run subdirectory under decisions', async () => {
+    await state.initRun('scout', 'run-abc');
+    expect(await pathExists(path.join(stateDir, 'decisions', 'scout'))).toBe(false);
   });
 
   it('generates a UUID when no run_id is supplied', async () => {
@@ -166,7 +172,7 @@ describe('initRun', () => {
   it('works even if initState has not been called yet', async () => {
     const fresh = new StateManager(path.join(tmpDir, 'fresh-state'));
     const runId = await fresh.initRun('scout');
-    for (const t of TARGETS) {
+    for (const t of PER_RUN_TARGETS) {
       expect(
         await isDir(path.join(tmpDir, 'fresh-state', t, 'scout', runId)),
       ).toBe(true);

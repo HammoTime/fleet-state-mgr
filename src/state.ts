@@ -7,6 +7,18 @@ export type Target = (typeof TARGETS)[number];
 
 export type FileTarget = Exclude<Target, 'decisions'>;
 
+/**
+ * Buckets that get a per-(agent_name, run_id) subdirectory carved out by
+ * init_run. The decision log is a single shared file under `decisions/`, so
+ * decisions are deliberately excluded here.
+ */
+export const PER_RUN_TARGETS: readonly FileTarget[] = [
+  'cache',
+  'results',
+  'artifacts',
+  'summaries',
+];
+
 export const DEFAULT_STATE_DIRECTORY = '.ai-fleet-state';
 export const DECISION_LOG_FILENAME = 'decision.log';
 
@@ -79,7 +91,7 @@ export class StateManager {
     const finalRunId = runId ?? randomUUID();
     StateManager.assertValidComponent(finalRunId, 'run_id');
 
-    for (const t of TARGETS) {
+    for (const t of PER_RUN_TARGETS) {
       await fs.mkdir(path.join(this.stateDirectory, t, agentName, finalRunId), {
         recursive: true,
       });
