@@ -1,5 +1,5 @@
 {
-  "name": "fleet-state-mgr",
+  "name": "@hammotime/fleet-state-mgr",
   "version": "0.1.0",
   "description": "MCP server for sharing context and state between an Orchestrator and its Sub-Agents in agentic systems.",
   "type": "module",
@@ -17,9 +17,11 @@
     "build": "tsc",
     "clean": "rm -rf dist coverage",
     "dev": "tsc --watch",
+    "lint": "eslint src tests",
+    "lint:fix": "eslint src tests --fix",
     "test": "vitest run",
     "test:watch": "vitest",
-    "prepublishOnly": "npm run clean && npm run build && npm test",
+    "prepublishOnly": "npm run lint && npm run clean && npm run build && npm test",
     "start": "node dist/index.js"
   },
   "keywords": [
@@ -47,7 +49,9 @@
   },
   "devDependencies": {
     "@types/node": "^22.10.0",
+    "eslint": "^9.0.0",
     "typescript": "^5.7.2",
+    "typescript-eslint": "^8.0.0",
     "vitest": "^2.1.8"
   },
   "engines": {

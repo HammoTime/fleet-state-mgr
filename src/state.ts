@@ -276,7 +276,6 @@ export class StateManager {
   private async findGitRoot(startDir: string): Promise<string | null> {
     let dir = path.resolve(startDir);
     // Walk upward looking for a .git entry (directory or worktree pointer file).
-    // eslint-disable-next-line no-constant-condition
     while (true) {
       try {
         await fs.access(path.join(dir, '.git'));
