@@ -27,6 +27,9 @@ jobs:
           node-version: 22
           cache: npm
 
+      - name: Update npm to support trusted publishing
+        run: npm install -g npm@latest
+
       - run: npm ci
       - run: npm run lint
       - run: npm run build
