@@ -39,13 +39,29 @@ npm install
 npm run build          # tsc → dist/
 npm test               # vitest run (unit + dispatch + stdio integration)
 npm run test:watch     # vitest in watch mode
+npm run lint           # eslint src tests
+npm run prepublishOnly # clean → lint → build → test (full CI pipeline)
 
 node dist/index.js     # launch the server (talks MCP over stdio)
 ```
 
 Integration tests **require a built `dist/`** — they spawn `dist/index.js` as a subprocess. If you change source, run `npm run build` before `npm test` or the integration suite will tell you to.
 
-`npm run prepublishOnly` runs `clean → build → test` and is what gates `npm publish`.
+`npm run prepublishOnly` runs `lint → clean → build → test` and is what gates `npm publish`.
+
+## CI Checklist
+
+Before submitting code for CI/publishing, ensure:
+
+- [ ] `npm run lint` passes (no eslint errors or warnings)
+- [ ] `npm run build` succeeds with no TypeScript errors
+- [ ] `npm test` passes (all 46 tests)
+- [ ] `npm run prepublishOnly` passes (full pipeline)
+- [ ] `CHANGES.md` updated if API changed
+- [ ] `README.md` updated if tools or behavior changed
+- [ ] `AGENTS.md` updated if architecture or development guidance changed
+- [ ] Tests added/updated for any new functionality
+- [ ] Version bumped via `npm version` (major/minor/patch as appropriate)
 
 ## Architectural decisions worth knowing
 

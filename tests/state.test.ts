@@ -128,7 +128,7 @@ describe('put', () => {
   });
 
   it('overwrites file when overwrite is true', async () => {
-    const fileId = await state.put('agent', 'file.txt', 'first');
+    await state.put('agent', 'file.txt', 'first');
     const newFileId = await state.put('agent', 'file.txt', 'second', true);
     const retrieved = await state.get(newFileId);
     expect(retrieved).toBe('second');
