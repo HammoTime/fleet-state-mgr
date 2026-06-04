@@ -1,18 +1,15 @@
 # fleet-state-mgr
 
-An MCP server that lets an **Orchestrator** and its **Sub-Agents** share context, decisions, results, artifacts, and summaries through a structured on-disk state directory.
+A simple MCP server for storing and retrieving files organized by session and agent. Provides a minimal, stateless API for sharing context between agents.
 
 ## Concepts
 
-| Bucket       | Purpose                                                                                | Typical writers | Typical readers |
-| ------------ | -------------------------------------------------------------------------------------- | --------------- | --------------- |
-| `cache`      | An agent's in-process scratchpad — used to offload context that's not currently active | self            | self            |
-| `decisions`  | Append-only audit log of decisions made by any sub-agent                               | sub-agents      | orchestrator    |
-| `results`    | Sub-agent run outputs                                                                  | sub-agents      | orchestrator    |
-| `artifacts`  | Transient inter-agent payloads (plans, code drafts, file listings, etc.)               | sub-agents      | sub-agents      |
-| `summaries`  | Concise human/orchestrator-facing summaries written by sub-agents                      | sub-agents      | orchestrator    |
+**Sessions** group related work together. Each session has a unique ID and a name. Within a session, agents store and retrieve files using a simple key-value interface.
 
-Artifacts are **transient** carriers between agents — ultimate, user-facing artifacts (production code, published docs) go into the work tree itself, not here.
+Files are identified by a 4-part ID:
+- Session ID (UUID)
+- Agent name (who wrote it)
+- File name (relative path)
 
 ## Install / Run
 
@@ -41,61 +38,94 @@ The server speaks MCP over stdio. Wire it into your client's MCP config — for 
 | ------------------------- | -------------------------------------------------------------------------------------- |
 | `FLEET_STATE_DIRECTORY`   | Override the default state directory (`.ai-fleet-state` relative to the server's cwd). |
 
-`init_state` may also override the directory at runtime.
-
 ## MCP tools
 
-| Tool             | Inputs                                                       | Outputs                    |
-| ---------------- | ------------------------------------------------------------ | -------------------------- |
-| `init_state`     | `state_directory?`                                           | `success`, `error?`        |
-| `init_run`       | `agent_name`, `run_id?`                                      | `run_id`, `error?`         |
-| `clean_state`    | —                                                            | `success`, `error?`        |
-| `write_cache`    | `agent_name?`, `run_id?`, `file_name`, `content`             | `success`, `error?`        |
-| `read_cache`     | `agent_name?`, `run_id?`, `file_name`                        | `content`, `error?`        |
-| `write_result`   | `agent_name?`, `run_id?`, `file_name`, `content`             | `success`, `error?`        |
-| `read_result`    | `agent_name?`, `run_id?`, `file_name`                        | `content`, `error?`        |
-| `write_artifact` | `agent_name?`, `run_id?`, `file_name`, `content`             | `success`, `error?`        |
-| `read_artifact`  | `agent_name?`, `run_id?`, `file_name`                        | `content`, `error?`        |
-| `write_summary`  | `agent_name?`, `run_id?`, `file_name`, `content`             | `success`, `error?`        |
-| `read_summary`   | `agent_name?`, `run_id?`, `file_name`                        | `content`, `error?`        |
-| `write_decision` | `agent_name?`, `run_id?`, `content`                          | `success`, `error?`        |
-| `read_decisions` | `agent_name?`, `start_time?`, `end_time?`                    | `decisions[]`, `error?`    |
+| Tool             | Inputs                                               | Outputs                 |
+| ---------------- | ---------------------------------------------------- | ----------------------- |
+| `new_session`    | `name`                                               | `id`, `error?`          |
+| `get_session`    | —                                                    | `id`, `name`, `error?`  |
+| `clean_sessions` | —                                                    | `success`, `error?`     |
+| `put`            | `agent_name`, `file_name`, `content`, `overwrite?`  | `id`, `error?`          |
+| `get`            | `id`                                                 | `content`, `error?`     |
 
-`agent_name` / `run_id` default to **self** — i.e. the values most recently passed to `init_run` on the same server instance. Provide them explicitly to read from or write to another agent's bucket.
+### Tool Details
 
-## Permission model
+#### `new_session(name: string)`
 
-The MCP server exposes every tool to every client; **permissions are a deployment convention**, enforced by configuring each MCP client to only call the tools it should:
+Creates a new session and returns its UUID. The session name is stored for reference. If a previous session exists, it is archived to a log.
 
-- **All agents** — `write_cache`, `read_cache`, `init_run`
-- **Orchestrator only** — `read_decisions`, `read_result`, `read_summary`, `init_state`, `clean_state`
-- **Sub-agents only** — `write_decision`, `write_result`, `read_artifact`, `write_artifact`, `write_summary`
+**Response:**
+```json
+{ "id": "550e8400-e29b-41d4-a716-446655440000" }
+```
 
-Configure each client's `disabledTools` (or equivalent allowlist) to match the role.
+#### `get_session()`
+
+Returns the currently active session's ID and name.
+
+**Response:**
+```json
+{ "id": "550e8400-e29b-41d4-a716-446655440000", "name": "my-session" }
+```
+
+#### `clean_sessions()`
+
+Removes all sessions and stored files. Reinitializes the state directory.
+
+**Response:**
+```json
+{ "success": true }
+```
+
+#### `put(agent_name, file_name, content, overwrite?)`
+
+Stores a file in the current session under the given agent name. Fails with `ERR_FILE_EXISTS` if the file already exists and `overwrite` is not `true`.
+
+**Parameters:**
+- `agent_name` (string): Identifies the agent writing the file
+- `file_name` (string): Relative path within the agent's directory (e.g., `notes.md`, `nested/dir/code.ts`)
+- `content` (string): File contents
+- `overwrite` (boolean, default: false): If `true`, overwrites existing files
+
+**Response:**
+```json
+{ "id": "fsm::file::550e8400-e29b-41d4-a716-446655440000::scout::notes.md" }
+```
+
+#### `get(id)`
+
+Retrieves file content by its full ID. Returns error codes for missing sessions, agents, or files.
+
+**Parameters:**
+- `id` (string): Full file ID in format `fsm::file::SESSION_ID::AGENT_NAME::FILE_NAME`
+
+**Response:**
+```json
+{ "content": "file contents here" }
+```
+
+**Error codes:**
+- `ERR_CAN_ONLY_RETRIEVE_FILES` — ID does not match the file format
+- `ERR_SESSION_NOT_VALID` — Session does not exist
+- `ERR_AGENT_NOT_VALID` — Agent directory does not exist in the session
+- `ERR_FILE_NOT_FOUND` — File does not exist in the agent directory
 
 ## On-disk layout
 
 ```
 .ai-fleet-state/
-├── cache/<agent_name>/<run_id>/...
-├── decisions/
-│   └── decision.log                     ← shared append-only JSONL audit log
-├── results/<agent_name>/<run_id>/...
-├── artifacts/<agent_name>/<run_id>/...
-└── summaries/<agent_name>/<run_id>/...
+├── current_run.txt                          ← active session: "UUID:::NAME"
+├── previous_run_log.txt                     ← archive of previous sessions
+└── <session-id>/
+    ├── <agent_name>/
+    │   ├── file1.txt
+    │   └── nested/dir/
+    │       └── file2.md
+    └── <other-agent>/
+        └── ...
 ```
 
-Only the four file buckets (`cache`, `results`, `artifacts`, `summaries`) get per-`(agent_name, run_id)` subdirectories. Decisions are recorded exclusively in the shared `decisions/decision.log`.
-
-The decision log is a single shared JSONL file. Each line is one record:
-
-```json
-{"datetime":"2026-05-27T13:39:00.000Z","agent_name":"scout","run_id":"…","content":"…"}
-```
-
-If `content` parses as JSON, it is stored as a structured object; otherwise it is stored as a string.
-
-`init_state` will add the state directory to `.gitignore` when it detects an enclosing git repository, so transient state is never committed.
+Sessions are created lazily — the session directory only exists after files are stored with `put()`.
 
 ## Development
 
