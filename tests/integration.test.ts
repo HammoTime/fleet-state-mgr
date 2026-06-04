@@ -52,113 +52,132 @@ function parseToolResult<T = unknown>(result: { content: unknown }): T {
 }
 
 describe('MCP stdio integration', () => {
-  it('lists every declared tool', async () => {
+  it('lists all five simplified tools', async () => {
     const { tools } = await client.listTools();
     const names = tools.map((t) => t.name).sort();
-    expect(names).toEqual(
-      [
-        'clean_state',
-        'init_run',
-        'init_state',
-        'read_artifact',
-        'read_cache',
-        'read_decisions',
-        'read_result',
-        'read_summary',
-        'write_artifact',
-        'write_cache',
-        'write_decision',
-        'write_result',
-        'write_summary',
-      ].sort(),
-    );
+    expect(names).toEqual(['clean_sessions', 'get', 'get_session', 'new_session', 'put'].sort());
   });
 
-  it('drives a full orchestrator -> sub-agent flow over the wire', async () => {
-    // Orchestrator boots.
-    const initResult = parseToolResult<{ success: boolean }>(
-      await client.callTool({ name: 'init_state', arguments: {} }),
+  it('drives a full agent session over the wire', async () => {
+    // Agent creates a new session.
+    const sessionResult = parseToolResult<{ id: string }>(
+      await client.callTool({ name: 'new_session', arguments: { name: 'agent-session' } }),
     );
-    expect(initResult.success).toBe(true);
+    expect(sessionResult.id).toMatch(/^[0-9a-f-]{36}$/i);
 
-    // Sub-agent registers.
-    const runResult = parseToolResult<{ run_id: string }>(
-      await client.callTool({
-        name: 'init_run',
-        arguments: { agent_name: 'scout' },
-      }),
+    // Agent verifies current session.
+    const getSessionResult = parseToolResult<{ id: string; name: string }>(
+      await client.callTool({ name: 'get_session', arguments: {} }),
     );
-    expect(runResult.run_id).toMatch(/^[0-9a-f-]{36}$/i);
+    expect(getSessionResult.id).toBe(sessionResult.id);
+    expect(getSessionResult.name).toBe('agent-session');
 
-    // Sub-agent writes an artifact, then a structured decision, then a summary.
-    parseToolResult(
+    // Agent stores multiple files.
+    const noteId = parseToolResult<{ id: string }>(
       await client.callTool({
-        name: 'write_artifact',
-        arguments: { file_name: 'plan.md', content: '# Plan\n- find unused exports' },
-      }),
-    );
-    parseToolResult(
-      await client.callTool({
-        name: 'write_decision',
-        arguments: {
-          content: JSON.stringify({ ruled_out: ['globals'], next: 'check imports' }),
-        },
-      }),
-    );
-    parseToolResult(
-      await client.callTool({
-        name: 'write_summary',
-        arguments: { file_name: 'summary.md', content: 'Found 3 unused exports.' },
-      }),
-    );
-
-    // Orchestrator reads everything back.
-    const artifact = parseToolResult<{ content: string }>(
-      await client.callTool({
-        name: 'read_artifact',
+        name: 'put',
         arguments: {
           agent_name: 'scout',
-          run_id: runResult.run_id,
-          file_name: 'plan.md',
+          file_name: 'findings.md',
+          content: '# Analysis\n- Found 3 issues',
         },
       }),
     );
-    expect(artifact.content).toContain('unused exports');
+    expect(noteId.id).toMatch(/^fsm::file::[0-9a-f-]{36}::scout::findings\.md$/i);
 
-    const decisions = parseToolResult<{ decisions: string[] }>(
-      await client.callTool({ name: 'read_decisions', arguments: { agent_name: 'scout' } }),
-    );
-    expect(decisions.decisions).toHaveLength(1);
-    const decisionRecord = JSON.parse(decisions.decisions[0]!) as { content: unknown };
-    expect(decisionRecord.content).toEqual({
-      ruled_out: ['globals'],
-      next: 'check imports',
-    });
-
-    const summary = parseToolResult<{ content: string }>(
+    const codeId = parseToolResult<{ id: string }>(
       await client.callTool({
-        name: 'read_summary',
+        name: 'put',
         arguments: {
-          agent_name: 'scout',
-          run_id: runResult.run_id,
-          file_name: 'summary.md',
+          agent_name: 'engineer',
+          file_name: 'fix.ts',
+          content: 'const fix = () => { /* solution */ };',
         },
       }),
     );
-    expect(summary.content).toBe('Found 3 unused exports.');
+
+    // Agent retrieves files by id.
+    const retrievedNote = parseToolResult<{ content: string }>(
+      await client.callTool({ name: 'get', arguments: { id: noteId.id } }),
+    );
+    expect(retrievedNote.content).toContain('Found 3 issues');
+
+    const retrievedCode = parseToolResult<{ content: string }>(
+      await client.callTool({ name: 'get', arguments: { id: codeId.id } }),
+    );
+    expect(retrievedCode.content).toContain('solution');
   });
 
-  it('surfaces tool errors as isError responses', async () => {
-    await client.callTool({ name: 'init_state', arguments: {} });
-    await client.callTool({ name: 'init_run', arguments: { agent_name: 'scout' } });
+  it('clean_sessions wipes all stored data', async () => {
+    const sessionId = parseToolResult<{ id: string }>(
+      await client.callTool({ name: 'new_session', arguments: { name: 'test' } }),
+    ).id;
 
+    const fileId = parseToolResult<{ id: string }>(
+      await client.callTool({
+        name: 'put',
+        arguments: {
+          agent_name: 'agent',
+          file_name: 'data.txt',
+          content: 'important data',
+        },
+      }),
+    ).id;
+
+    // Clean sessions.
+    parseToolResult(await client.callTool({ name: 'clean_sessions', arguments: {} }));
+
+    // Data is gone.
+    const result = await client.callTool({ name: 'get', arguments: { id: fileId } });
+    expect(result.isError).toBe(true);
+
+    // Can create a new session after cleaning.
+    const newSessionId = parseToolResult<{ id: string }>(
+      await client.callTool({ name: 'new_session', arguments: { name: 'new-session' } }),
+    ).id;
+    expect(newSessionId).not.toBe(sessionId);
+  });
+
+  it('surfaces errors as isError responses', async () => {
     const result = await client.callTool({
-      name: 'read_cache',
-      arguments: { file_name: 'does-not-exist.txt' },
+      name: 'get',
+      arguments: { id: 'fsm::file::00000000-0000-0000-0000-000000000000::agent::file.txt' },
     });
     expect(result.isError).toBe(true);
     const parsed = parseToolResult<{ success: boolean; error: string }>(result);
     expect(parsed.success).toBe(false);
     expect(parsed.error).toBeTypeOf('string');
+  });
+
+  it('put with overwrite=true overwrites files', async () => {
+    parseToolResult(await client.callTool({ name: 'new_session', arguments: { name: 'test' } }));
+
+    const fileId = parseToolResult<{ id: string }>(
+      await client.callTool({
+        name: 'put',
+        arguments: {
+          agent_name: 'agent',
+          file_name: 'file.txt',
+          content: 'first version',
+        },
+      }),
+    ).id;
+
+    parseToolResult(
+      await client.callTool({
+        name: 'put',
+        arguments: {
+          agent_name: 'agent',
+          file_name: 'file.txt',
+          content: 'second version',
+          overwrite: true,
+        },
+      }),
+    );
+
+    const content = parseToolResult<{ content: string }>(
+      await client.callTool({ name: 'get', arguments: { id: fileId } }),
+    ).content;
+    expect(content).toBe('second version');
   });
 });

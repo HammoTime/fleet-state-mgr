@@ -4,161 +4,84 @@ import {
   ListToolsRequestSchema,
   type Tool,
 } from '@modelcontextprotocol/sdk/types.js';
-import { StateManager, type FileTarget } from './state.js';
+import { StateManager } from './state.js';
 
 const NAME = 'fleet-state-mgr';
 const VERSION = '0.1.0';
 
-const fileBucketAgentProps = {
-  agent_name: {
-    type: 'string',
-    description: 'Target agent. Defaults to the agent that last called init_run on this server.',
-  },
-  run_id: {
-    type: 'string',
-    description: 'Target run id. Defaults to the run id from the last init_run call.',
-  },
-} as const;
-
-function fileReadSchema(): Tool['inputSchema'] {
-  return {
-    type: 'object',
-    properties: {
-      ...fileBucketAgentProps,
-      file_name: { type: 'string', description: 'Relative path of the file within the run directory.' },
-    },
-    required: ['file_name'],
-    additionalProperties: false,
-  };
-}
-
-function fileWriteSchema(): Tool['inputSchema'] {
-  return {
-    type: 'object',
-    properties: {
-      ...fileBucketAgentProps,
-      file_name: { type: 'string', description: 'Relative path of the file within the run directory.' },
-      content: { type: 'string', description: 'File contents to write (replaces any existing file).' },
-    },
-    required: ['file_name', 'content'],
-    additionalProperties: false,
-  };
-}
-
 const TOOLS: Tool[] = [
   {
-    name: 'init_state',
-    description:
-      'Create the fleet state directory tree (cache/decisions/results/artifacts/summaries). Adds the directory to .gitignore when run inside a git repository. Should be the first call from the orchestrator.',
+    name: 'new_session',
+    description: 'Create a new session and return the session id.',
     inputSchema: {
       type: 'object',
       properties: {
-        state_directory: {
+        name: {
           type: 'string',
-          description: 'Where the state directory should live. Defaults to .ai-fleet-state in the server cwd.',
+          description: 'The name of the session.',
         },
       },
+      required: ['name'],
       additionalProperties: false,
     },
   },
   {
-    name: 'init_run',
-    description:
-      'Create per-agent / per-run subdirectories under each state bucket. Returns the run_id (auto-generated UUID if not supplied) and remembers (agent_name, run_id) as the "self" defaults for subsequent calls.',
+    name: 'get_session',
+    description: 'Get the current session id and name.',
+    inputSchema: {
+      type: 'object',
+      properties: {},
+      additionalProperties: false,
+    },
+  },
+  {
+    name: 'clean_sessions',
+    description: 'Remove all sessions and reinitialize the state directory.',
+    inputSchema: {
+      type: 'object',
+      properties: {},
+      additionalProperties: false,
+    },
+  },
+  {
+    name: 'get',
+    description: 'Retrieve file content by id. Id format: fsm::file::SESSION_ID::AGENT_NAME::FILE_NAME',
     inputSchema: {
       type: 'object',
       properties: {
-        agent_name: { type: 'string', description: "The agent's type, classification, or persona." },
-        run_id: { type: 'string', description: 'Optional caller-supplied run identifier. If absent, a UUID is generated.' },
+        id: {
+          type: 'string',
+          description: 'The file id in format fsm::file::SESSION_ID::AGENT_NAME::FILE_NAME',
+        },
       },
-      required: ['agent_name'],
+      required: ['id'],
       additionalProperties: false,
     },
   },
   {
-    name: 'clean_state',
-    description: 'Wipe the entire state directory and reinitialize it. Use when work is complete.',
-    inputSchema: { type: 'object', properties: {}, additionalProperties: false },
-  },
-
-  {
-    name: 'write_cache',
-    description: "Write to the calling agent's cache bucket (or another agent's, if agent_name/run_id are provided).",
-    inputSchema: fileWriteSchema(),
-  },
-  {
-    name: 'read_cache',
-    description: 'Read a file from a cache bucket.',
-    inputSchema: fileReadSchema(),
-  },
-
-  {
-    name: 'write_result',
-    description: "Write to a sub-agent's results bucket. The orchestrator reads these to evaluate runs.",
-    inputSchema: fileWriteSchema(),
-  },
-  {
-    name: 'read_result',
-    description: 'Read a file from a sub-agent results bucket (orchestrator).',
-    inputSchema: fileReadSchema(),
-  },
-
-  {
-    name: 'write_artifact',
-    description: 'Write a transient artifact intended for consumption by another sub-agent.',
-    inputSchema: fileWriteSchema(),
-  },
-  {
-    name: 'read_artifact',
-    description: 'Read a transient artifact produced by another sub-agent.',
-    inputSchema: fileReadSchema(),
-  },
-
-  {
-    name: 'write_summary',
-    description: 'Write a concise summary intended for the orchestrator / user.',
-    inputSchema: fileWriteSchema(),
-  },
-  {
-    name: 'read_summary',
-    description: 'Read a sub-agent summary (orchestrator).',
-    inputSchema: fileReadSchema(),
-  },
-
-  {
-    name: 'write_decision',
-    description:
-      'Append a decision record to the shared decision log. Content may be plain text or a JSON object; structured JSON is stored as parsed structure inside the record.',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        ...fileBucketAgentProps,
-        content: { type: 'string', description: 'Decision content. Text or JSON-encoded structured data.' },
-      },
-      required: ['content'],
-      additionalProperties: false,
-    },
-  },
-  {
-    name: 'read_decisions',
-    description:
-      'Read the shared decision log. Returns an array of JSONL records (as strings) filtered by agent_name and/or time range.',
+    name: 'put',
+    description: 'Store a file and return its id.',
     inputSchema: {
       type: 'object',
       properties: {
         agent_name: {
           type: 'string',
-          description: 'Limit to decisions written by this agent. Default: include all agents.',
+          description: 'The agent name.',
         },
-        start_time: {
+        file_name: {
           type: 'string',
-          description: 'Only include decisions with datetime >= start_time (ISO 8601).',
+          description: 'The file name.',
         },
-        end_time: {
+        content: {
           type: 'string',
-          description: 'Only include decisions with datetime <= end_time (ISO 8601).',
+          description: 'The file content.',
+        },
+        overwrite: {
+          type: 'boolean',
+          description: 'Whether to overwrite an existing file. Defaults to false.',
         },
       },
+      required: ['agent_name', 'file_name', 'content'],
       additionalProperties: false,
     },
   },
@@ -175,87 +98,45 @@ export type ToolResult = {
   isError?: boolean;
 };
 
-const FILE_BUCKETS: Record<string, FileTarget> = {
-  cache: 'cache',
-  result: 'results',
-  artifact: 'artifacts',
-  summary: 'summaries',
-};
-
 export async function dispatch(
   state: StateManager,
   name: string,
   args: ToolArgs,
 ): Promise<unknown> {
   switch (name) {
-    case 'init_state': {
-      const stateDirectory = optionalString(args, 'state_directory');
-      await state.initState(stateDirectory);
+    case 'new_session': {
+      const sessionName = requireString(args, 'name');
+      const sessionId = await state.newSession(sessionName);
+      return { id: sessionId };
+    }
+
+    case 'get_session': {
+      const session = await state.getSession();
+      return { id: session.id, name: session.name };
+    }
+
+    case 'clean_sessions': {
+      await state.cleanSessions();
       return { success: true };
     }
 
-    case 'init_run': {
+    case 'get': {
+      const id = requireString(args, 'id');
+      const content = await state.get(id);
+      return { content };
+    }
+
+    case 'put': {
       const agentName = requireString(args, 'agent_name');
-      const runId = optionalString(args, 'run_id');
-      const finalRunId = await state.initRun(agentName, runId);
-      return { run_id: finalRunId };
-    }
-
-    case 'clean_state': {
-      await state.cleanState();
-      return { success: true };
-    }
-
-    case 'write_decision': {
-      const { agent_name, run_id } = state.resolveAgent(
-        optionalString(args, 'agent_name'),
-        optionalString(args, 'run_id'),
-      );
+      const fileName = requireString(args, 'file_name');
       const content = requireString(args, 'content', true);
-      await state.writeDecision(agent_name, run_id, content);
-      return { success: true };
+      const overwrite = args.overwrite === true;
+      const fileId = await state.put(agentName, fileName, content, overwrite);
+      return { id: fileId };
     }
 
-    case 'read_decisions': {
-      const agentName = optionalString(args, 'agent_name');
-      const startTime = optionalString(args, 'start_time');
-      const endTime = optionalString(args, 'end_time');
-      const decisions = await state.readDecisions({
-        agent_name: agentName,
-        start_time: startTime,
-        end_time: endTime,
-      });
-      return { decisions };
-    }
-
-    default: {
-      const writeMatch = /^write_(cache|result|artifact|summary)$/.exec(name);
-      if (writeMatch) {
-        const bucket = FILE_BUCKETS[writeMatch[1]!]!;
-        const { agent_name, run_id } = state.resolveAgent(
-          optionalString(args, 'agent_name'),
-          optionalString(args, 'run_id'),
-        );
-        const fileName = requireString(args, 'file_name');
-        const content = requireString(args, 'content', true);
-        await state.writeFile(bucket, agent_name, run_id, fileName, content);
-        return { success: true };
-      }
-
-      const readMatch = /^read_(cache|result|artifact|summary)$/.exec(name);
-      if (readMatch) {
-        const bucket = FILE_BUCKETS[readMatch[1]!]!;
-        const { agent_name, run_id } = state.resolveAgent(
-          optionalString(args, 'agent_name'),
-          optionalString(args, 'run_id'),
-        );
-        const fileName = requireString(args, 'file_name');
-        const content = await state.readFile(bucket, agent_name, run_id, fileName);
-        return { content };
-      }
-
+    default:
       throw new Error(`Unknown tool: ${name}`);
-    }
   }
 }
 
@@ -297,7 +178,7 @@ export function createServer(
 // ---------------------------------------------------------------------------
 
 function isPlainObject(v: unknown): v is Record<string, unknown> {
-  return typeof v === 'object' && v !== null && !Array.isArray(v);
+  return typeof v === 'object' && v !== null && Array.isArray(v) === false;
 }
 
 function requireString(args: ToolArgs, key: string, allowEmpty = false): string {
@@ -307,15 +188,6 @@ function requireString(args: ToolArgs, key: string, allowEmpty = false): string 
   }
   if (!allowEmpty && v.length === 0) {
     throw new Error(`Argument '${key}' must be a non-empty string`);
-  }
-  return v;
-}
-
-function optionalString(args: ToolArgs, key: string): string | undefined {
-  const v = args[key];
-  if (v === undefined || v === null) return undefined;
-  if (typeof v !== 'string') {
-    throw new Error(`Argument '${key}' must be a string when provided`);
   }
   return v;
 }
